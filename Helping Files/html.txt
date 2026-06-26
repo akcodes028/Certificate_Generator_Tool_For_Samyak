@@ -1,0 +1,195 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCC Certificate Generation Portal</title>
+  <link rel="stylesheet" href="style.css?v=20260626-batch-ui">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="image.png" alt="SCC Logo" class="brand-logo" onerror="this.style.display='none'">
+      <div>
+        <p class="brand-kicker">SCC ADMIN</p>
+        <h1>Certificate Generation Portal</h1>
+        <p>Samyak Computer Classes - Osian Enterprise</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="ghost-btn" type="button" onclick="clearSelection()">Clear</button>
+      <button class="icon-btn" type="button" onclick="loadApprovedStudents()">Refresh</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero-panel reveal-card">
+      <div>
+        <p class="section-eyebrow">Owner Workspace</p>
+        <h2>Approve, select, preview, and generate certificates faster.</h2>
+        <p>Select up to 5 approved sheet rows at once. Review them in the preview slider, then generate all selected certificates together.</p>
+      </div>
+      <div class="hero-actions">
+        <button type="button" onclick="previewSelected()">Preview Selected</button>
+        <button class="accent-btn" type="button" onclick="generateSelected()">Generate Selected</button>
+      </div>
+    </section>
+
+    <section class="status-row reveal-card">
+      <div class="stat"><span id="totalCount">0</span><small>Approved</small></div>
+      <div class="stat"><span id="pendingCount">0</span><small>Ready</small></div>
+      <div class="stat"><span id="doneCount">0</span><small>Generated</small></div>
+      <div class="stat selected-stat"><span id="selectedCount">0/5</span><small>Selected</small></div>
+    </section>
+
+    <section class="controls-card reveal-card">
+      <div class="controls-main">
+        <label class="field-label" for="searchInput">Search records</label>
+        <input id="searchInput" type="search" placeholder="Name, email, mobile, course, certificate ID" oninput="renderGrid()">
+      </div>
+      <div class="controls-main compact">
+        <label class="field-label" for="generatedFilter">Generated status</label>
+        <select id="generatedFilter" onchange="renderGrid()">
+          <option value="pending">Not generated</option>
+          <option value="all">All approved</option>
+          <option value="yes">Generated</option>
+        </select>
+      </div>
+      <div class="controls-main compact">
+        <label class="field-label" for="courseFilter">Course</label>
+        <select id="courseFilter" onchange="renderGrid()">
+          <option value="all">All courses</option>
+        </select>
+      </div>
+    </section>
+
+    <div id="message" class="message" style="display:none;"></div>
+
+    <section class="selection-bar" id="selectionBar" style="display:none;">
+      <div>
+        <strong id="selectionTitle">0 selected</strong>
+        <span>Maximum 5 certificates per batch.</span>
+      </div>
+      <div class="selection-actions">
+        <button class="ghost-dark" type="button" onclick="previewSelected()">Preview</button>
+        <button type="button" onclick="generateSelected()">Generate Batch</button>
+      </div>
+    </section>
+
+    <section class="grid-wrap reveal-card">
+      <table class="student-table">
+        <thead>
+          <tr>
+            <th class="select-col">Select</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Mobile</th>
+            <th>Course</th>
+            <th>Joining</th>
+            <th>Ending</th>
+            <th>Review</th>
+            <th>Certificate ID</th>
+            <th>Generated</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="studentGrid">
+          <tr><td colspan="11" class="empty">Loading approved records...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="previewPanel" class="preview-panel" style="display:none;">
+      <div class="preview-shell reveal-card">
+        <div class="preview-header">
+          <div>
+            <p class="section-eyebrow">Preview Window</p>
+            <h2 id="previewTitle">Certificate Preview</h2>
+            <p id="previewMeta">Use previous and next to review selected certificates.</p>
+          </div>
+          <div class="preview-actions">
+            <button class="ghost-dark" type="button" onclick="previousPreview()">Prev</button>
+            <button class="ghost-dark" type="button" onclick="nextPreview()">Next</button>
+            <button class="accent-btn" type="button" onclick="printCertificate()">Print / Save PDF</button>
+          </div>
+        </div>
+
+        <div class="slider-frame">
+          <button class="nav-arrow left" type="button" onclick="previousPreview()" aria-label="Previous certificate">‹</button>
+          <div class="certificate-stage">
+            <article id="certificateEl" class="certificate">
+              <div class="cert-top">
+                <div class="cert-brand">
+                  <img src="image.png" alt="SCC Logo" onerror="this.style.display='none'">
+                  <div>
+                    <strong>SCC</strong>
+                    <span>SAMYAK COMPUTER CLASSES</span>
+                    <small>Authorized Franchisee - Osian Enterprise</small>
+                  </div>
+                </div>
+                <div class="cert-year">
+                  <span>COURSE COMPLETION</span>
+                  <strong>2026</strong>
+                </div>
+              </div>
+
+              <div class="cert-body">
+                <div class="star left">*</div>
+                <div class="star right">*</div>
+                <h2>CERTIFICATE OF EXCELLENCE</h2>
+                <h3 id="certCourseHeading">COURSE COMPLETION - 2026</h3>
+                <p class="italic">This is to proudly certify that</p>
+                <h1 id="certName">Student Name</h1>
+                <p class="cert-copy">
+                  has successfully completed a <mark>live project based internship with training</mark>
+                  in <mark id="certCourseMark">Course</mark> conducted by Samyak Computer Classes
+                  (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.
+                  Their joining date is <mark id="certJoining">--</mark> and ending date is
+                  <mark id="certEnding">--</mark>.
+                </p>
+                <p class="cert-copy">
+                  The student has demonstrated <mark id="certReview">excellent practical learning</mark>,
+                  project discipline, and career-ready understanding throughout the training program.
+                </p>
+                <p class="congrats">Congratulations on this achievement!</p>
+                <p class="grade">GRADE &amp; EXCELLENCE <strong>A</strong></p>
+              </div>
+
+              <div class="cert-footer">
+                <div>
+                  <h4>VERIFICATION DETAILS</h4>
+                  <p>Verification No: <span id="certVerificationNo">--</span></p>
+                  <p>Email: info@osian.tech</p>
+                  <p>Phone: 7383021062, 9601257564</p>
+                  <p>Issued: <span id="certIssued">--</span></p>
+                  <p>Certificate ID: <span id="certId">--</span></p>
+                </div>
+                <div class="seal">OSIAN<br>ENTERPRISE<br>2026</div>
+                <div class="signature">
+                  <span></span>
+                  <strong>Badal Shah</strong>
+                  <p>AUTHORISED FRANCHISEE</p>
+                  <small>Osian Enterprise</small>
+                </div>
+              </div>
+
+              <div class="cert-bottom">
+                <strong>OSIAN ENTERPRISE - LOCAL OFFICE &amp; FRANCHISEE CONTACT</strong>
+                <span>FF-03 Samanway Sequence, Above Apollo Pharmacy, Ambe School Road, Vadodara - 390011 | 7383021062 | 9601257564 | info@osian.tech</span>
+              </div>
+            </article>
+          </div>
+          <button class="nav-arrow right" type="button" onclick="nextPreview()" aria-label="Next certificate">›</button>
+        </div>
+
+        <div id="previewDots" class="preview-dots"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js?v=20260626-batch-ui"></script>
+</body>
+</html>
+
+
+

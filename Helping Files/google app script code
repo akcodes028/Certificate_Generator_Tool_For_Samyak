@@ -1,0 +1,187 @@
+﻿/*************************************************
+ * SCC COURSE COMPLETION CERTIFICATE API
+ * Sheet 1: Form responses 1
+ * Sheet 2: verification data with approval/generation status
+ *************************************************/
+
+const VERIFICATION_SHEET_NAME = "Sheet2";
+const MAX_BATCH_GENERATE = 5;
+
+function doGet(e) {
+  try {
+    const action = String(e.parameter.action || "list").toLowerCase();
+
+    if (action === "generate") {
+      return output(generateCertificate_(Number(e.parameter.rowNumber)));
+    }
+
+    if (action === "generatebatch") {
+      return output(generateBatch_(String(e.parameter.rows || "")));
+    }
+
+    return output({
+      students: getApprovedStudents_()
+    });
+  } catch (err) {
+    return output({ error: err.message || String(err) });
+  }
+}
+
+function getApprovedStudents_() {
+  const sheet = getVerificationSheet_();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const headerMap = buildHeaderMap_(values[0]);
+  const students = [];
+
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const status = getCell_(row, headerMap, "verification status");
+
+    if (normalize_(status) !== "approved") continue;
+
+    students.push(mapStudent_(row, headerMap, r + 1));
+  }
+
+  return students;
+}
+
+function generateBatch_(rowsText) {
+  const rows = rowsText
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value, index, arr) => value >= 2 && arr.indexOf(value) === index)
+    .slice(0, MAX_BATCH_GENERATE);
+
+  if (!rows.length) {
+    throw new Error("Select at least one valid row.");
+  }
+
+  const students = rows.map((rowNumber) => generateCertificate_(rowNumber).student);
+
+  return {
+    success: true,
+    count: students.length,
+    students: students
+  };
+}
+
+function generateCertificate_(rowNumber) {
+  if (!rowNumber || rowNumber < 2) {
+    throw new Error("Valid rowNumber is required.");
+  }
+
+  const sheet = getVerificationSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headerMap = buildHeaderMap_(values[0]);
+  const row = values[rowNumber - 1];
+
+  if (!row) throw new Error("Student row not found.");
+
+  const status = getCell_(row, headerMap, "verification status");
+  if (normalize_(status) !== "approved") {
+    throw new Error("Only approved records can generate certificates.");
+  }
+
+  const certCol = getRequiredColumn_(headerMap, "certificate id");
+  const generatedCol = getRequiredColumn_(headerMap, "generated");
+  const existingCertId = getCell_(row, headerMap, "certificate id");
+  const certId = existingCertId || createCertificateId_(rowNumber);
+
+  sheet.getRange(rowNumber, certCol + 1).setValue(certId);
+  sheet.getRange(rowNumber, generatedCol + 1).setValue("Yes");
+
+  const updatedRow = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  return {
+    success: true,
+    student: mapStudent_(updatedRow, headerMap, rowNumber)
+  };
+}
+
+function getVerificationSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(VERIFICATION_SHEET_NAME);
+
+  if (!sheet) {
+    const sheets = ss.getSheets();
+    sheet = sheets.find((candidate) => {
+      const firstRow = candidate.getRange(1, 1, 1, candidate.getLastColumn()).getValues()[0];
+      const headers = firstRow.map((h) => normalizeHeader_(h));
+      return headers.indexOf("verification status") !== -1 &&
+        headers.indexOf("certificate id") !== -1 &&
+        headers.indexOf("generated") !== -1;
+    });
+  }
+
+  if (!sheet) {
+    throw new Error("Verification sheet not found. Rename the second sheet to Sheet2 or keep columns Verification Status, Certificate ID, Generated.");
+  }
+
+  return sheet;
+}
+
+function mapStudent_(row, headerMap, rowNumber) {
+  return {
+    rowNumber: rowNumber,
+    name: getCell_(row, headerMap, "name"),
+    email: getCell_(row, headerMap, "email"),
+    mobile: getCell_(row, headerMap, "mobile"),
+    course: getCell_(row, headerMap, "course"),
+    joiningDate: formatForJson_(getCell_(row, headerMap, "joining date")),
+    endingDate: formatForJson_(getCell_(row, headerMap, "ending date")),
+    courseReview: getCell_(row, headerMap, "course review"),
+    verificationStatus: getCell_(row, headerMap, "verification status"),
+    certificateId: getCell_(row, headerMap, "certificate id"),
+    generated: getCell_(row, headerMap, "generated"),
+    remarks: getCell_(row, headerMap, "remarks")
+  };
+}
+
+function buildHeaderMap_(headers) {
+  const map = {};
+  headers.forEach((header, index) => {
+    map[normalizeHeader_(header)] = index;
+  });
+  return map;
+}
+
+function getCell_(row, headerMap, headerName) {
+  const index = headerMap[normalizeHeader_(headerName)];
+  if (index === undefined) return "";
+  const value = row[index];
+  return value === null || value === undefined ? "" : value;
+}
+
+function getRequiredColumn_(headerMap, headerName) {
+  const index = headerMap[normalizeHeader_(headerName)];
+  if (index === undefined) throw new Error(headerName + " column not found.");
+  return index;
+}
+
+function createCertificateId_(rowNumber) {
+  const year = new Date().getFullYear();
+  return "SAMYAK-" + year + "-" + String(rowNumber - 1).padStart(4, "0");
+}
+
+function formatForJson_(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value)) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return value;
+}
+
+function normalizeHeader_(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalize_(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function output(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
