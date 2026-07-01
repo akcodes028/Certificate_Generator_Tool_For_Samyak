@@ -274,3 +274,94 @@ mark { padding: 1px 6px; border-radius: 5px; color: #2f236f; background: #fff0bd
   .certificate { box-shadow: none; max-width: none; }
 }
 
+
+/* Live single-certificate portal overrides */
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid rgba(75,42,160,0.18);
+  border-radius: 8px;
+  color: var(--violet);
+  background: #f6f2ff;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.sync-chip.ok {
+  color: var(--green);
+  border-color: #abebca;
+  background: #e9f8f0;
+}
+
+.sync-chip.warn {
+  color: #8b5200;
+  border-color: #ffd58d;
+  background: #fff4df;
+}
+
+.sync-chip.error {
+  color: #b42323;
+  border-color: #ffc0c0;
+  background: #fff0f0;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.preview-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  place-items: center;
+  margin: 0;
+  padding: clamp(12px, 3vw, 28px);
+  background: rgba(22, 16, 38, 0.68);
+  backdrop-filter: blur(5px);
+}
+
+.preview-shell {
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #fff;
+}
+
+.slider-frame {
+  display: block;
+}
+
+.certificate-stage {
+  display: grid;
+  justify-items: center;
+  overflow: auto;
+  padding: 10px 0 16px;
+}
+
+.student-table input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--violet);
+  cursor: pointer;
+}
+
+.student-table td:last-child button {
+  min-width: 88px;
+}
+
+@media (max-width: 760px) {
+  .sync-chip {
+    width: 100%;
+  }
+
+  .preview-panel {
+    align-items: start;
+  }
+
+  .preview-shell {
+    max-height: calc(100vh - 24px);
+  }
+}

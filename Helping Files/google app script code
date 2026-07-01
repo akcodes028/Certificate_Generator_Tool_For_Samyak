@@ -1,34 +1,31 @@
 ﻿/*************************************************
- * SCC COURSE COMPLETION CERTIFICATE API
- * Sheet 1: Form responses 1
- * Sheet 2: verification data with approval/generation status
+ * SCC CERTIFICATE PORTAL API
+ * Source tab: Verified Students
+ * Form tab: Form responses 1
  *************************************************/
 
-const VERIFICATION_SHEET_NAME = "Sheet2";
-const MAX_BATCH_GENERATE = 5;
+const VERIFIED_STUDENTS_SHEET_NAME = "Verified Students";
 
 function doGet(e) {
   try {
-    const action = String(e.parameter.action || "list").toLowerCase();
+    const action = String((e && e.parameter && e.parameter.action) || "list").toLowerCase();
+
+    if (action === "list" || action === "" || action === "get" || action === "read") {
+      return output({ students: getVerifiedStudents_() });
+    }
 
     if (action === "generate") {
       return output(generateCertificate_(Number(e.parameter.rowNumber)));
     }
 
-    if (action === "generatebatch") {
-      return output(generateBatch_(String(e.parameter.rows || "")));
-    }
-
-    return output({
-      students: getApprovedStudents_()
-    });
+    return output({ students: getVerifiedStudents_() });
   } catch (err) {
     return output({ error: err.message || String(err) });
   }
 }
 
-function getApprovedStudents_() {
-  const sheet = getVerificationSheet_();
+function getVerifiedStudents_() {
+  const sheet = getVerifiedStudentsSheet_();
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
 
@@ -37,34 +34,11 @@ function getApprovedStudents_() {
 
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
-    const status = getCell_(row, headerMap, "verification status");
-
-    if (normalize_(status) !== "approved") continue;
-
+    if (row.every((cell) => String(cell || "").trim() === "")) continue;
     students.push(mapStudent_(row, headerMap, r + 1));
   }
 
   return students;
-}
-
-function generateBatch_(rowsText) {
-  const rows = rowsText
-    .split(",")
-    .map((value) => Number(value.trim()))
-    .filter((value, index, arr) => value >= 2 && arr.indexOf(value) === index)
-    .slice(0, MAX_BATCH_GENERATE);
-
-  if (!rows.length) {
-    throw new Error("Select at least one valid row.");
-  }
-
-  const students = rows.map((rowNumber) => generateCertificate_(rowNumber).student);
-
-  return {
-    success: true,
-    count: students.length,
-    students: students
-  };
 }
 
 function generateCertificate_(rowNumber) {
@@ -72,51 +46,37 @@ function generateCertificate_(rowNumber) {
     throw new Error("Valid rowNumber is required.");
   }
 
-  const sheet = getVerificationSheet_();
+  const sheet = getVerifiedStudentsSheet_();
   const values = sheet.getDataRange().getValues();
   const headerMap = buildHeaderMap_(values[0]);
   const row = values[rowNumber - 1];
 
   if (!row) throw new Error("Student row not found.");
 
-  const status = getCell_(row, headerMap, "verification status");
-  if (normalize_(status) !== "approved") {
-    throw new Error("Only approved records can generate certificates.");
-  }
-
-  const certCol = getRequiredColumn_(headerMap, "certificate id");
-  const generatedCol = getRequiredColumn_(headerMap, "generated");
-  const existingCertId = getCell_(row, headerMap, "certificate id");
+  const certCol = ensureColumn_(sheet, headerMap, "Certificate ID");
+  const generatedCol = ensureColumn_(sheet, headerMap, "Generated");
+  const existingCertId = getCellAny_(row, headerMap, ["certificate id"]);
   const certId = existingCertId || createCertificateId_(rowNumber);
 
   sheet.getRange(rowNumber, certCol + 1).setValue(certId);
   sheet.getRange(rowNumber, generatedCol + 1).setValue("Yes");
 
+  const updatedHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const updatedMap = buildHeaderMap_(updatedHeaders);
   const updatedRow = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
 
   return {
     success: true,
-    student: mapStudent_(updatedRow, headerMap, rowNumber)
+    student: mapStudent_(updatedRow, updatedMap, rowNumber)
   };
 }
 
-function getVerificationSheet_() {
+function getVerifiedStudentsSheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(VERIFICATION_SHEET_NAME);
+  const sheet = ss.getSheetByName(VERIFIED_STUDENTS_SHEET_NAME);
 
   if (!sheet) {
-    const sheets = ss.getSheets();
-    sheet = sheets.find((candidate) => {
-      const firstRow = candidate.getRange(1, 1, 1, candidate.getLastColumn()).getValues()[0];
-      const headers = firstRow.map((h) => normalizeHeader_(h));
-      return headers.indexOf("verification status") !== -1 &&
-        headers.indexOf("certificate id") !== -1 &&
-        headers.indexOf("generated") !== -1;
-    });
-  }
-
-  if (!sheet) {
-    throw new Error("Verification sheet not found. Rename the second sheet to Sheet2 or keep columns Verification Status, Certificate ID, Generated.");
+    throw new Error('Sheet tab "Verified Students" not found. Please keep this exact tab name.');
   }
 
   return sheet;
@@ -125,17 +85,17 @@ function getVerificationSheet_() {
 function mapStudent_(row, headerMap, rowNumber) {
   return {
     rowNumber: rowNumber,
-    name: getCell_(row, headerMap, "name"),
-    email: getCell_(row, headerMap, "email"),
-    mobile: getCell_(row, headerMap, "mobile"),
-    course: getCell_(row, headerMap, "course"),
-    joiningDate: formatForJson_(getCell_(row, headerMap, "joining date")),
-    endingDate: formatForJson_(getCell_(row, headerMap, "ending date")),
-    courseReview: getCell_(row, headerMap, "course review"),
-    verificationStatus: getCell_(row, headerMap, "verification status"),
-    certificateId: getCell_(row, headerMap, "certificate id"),
-    generated: getCell_(row, headerMap, "generated"),
-    remarks: getCell_(row, headerMap, "remarks")
+    name: getCellAny_(row, headerMap, ["name", "full name"]),
+    email: getCellAny_(row, headerMap, ["email", "email address"]),
+    mobile: getCellAny_(row, headerMap, ["mobile", "mobile number"]),
+    course: getCellAny_(row, headerMap, ["course", "course name"]),
+    joiningDate: formatForJson_(getCellAny_(row, headerMap, ["joining date", "course joining date"])),
+    endingDate: formatForJson_(getCellAny_(row, headerMap, ["ending date", "course completion date"])),
+    courseReview: getCellAny_(row, headerMap, ["course review"]),
+    verificationStatus: getCellAny_(row, headerMap, ["verification status"]),
+    certificateId: getCellAny_(row, headerMap, ["certificate id"]),
+    generated: getCellAny_(row, headerMap, ["generated"]),
+    remarks: getCellAny_(row, headerMap, ["remarks", "any feedback"])
   };
 }
 
@@ -147,17 +107,25 @@ function buildHeaderMap_(headers) {
   return map;
 }
 
-function getCell_(row, headerMap, headerName) {
-  const index = headerMap[normalizeHeader_(headerName)];
-  if (index === undefined) return "";
-  const value = row[index];
-  return value === null || value === undefined ? "" : value;
+function getCellAny_(row, headerMap, headerNames) {
+  for (let i = 0; i < headerNames.length; i++) {
+    const index = headerMap[normalizeHeader_(headerNames[i])];
+    if (index !== undefined) {
+      const value = row[index];
+      return value === null || value === undefined ? "" : value;
+    }
+  }
+  return "";
 }
 
-function getRequiredColumn_(headerMap, headerName) {
-  const index = headerMap[normalizeHeader_(headerName)];
-  if (index === undefined) throw new Error(headerName + " column not found.");
-  return index;
+function ensureColumn_(sheet, headerMap, headerName) {
+  const normalized = normalizeHeader_(headerName);
+  if (headerMap[normalized] !== undefined) return headerMap[normalized];
+
+  const nextCol = sheet.getLastColumn() + 1;
+  sheet.getRange(1, nextCol).setValue(headerName);
+  headerMap[normalized] = nextCol - 1;
+  return nextCol - 1;
 }
 
 function createCertificateId_(rowNumber) {
@@ -174,10 +142,6 @@ function formatForJson_(value) {
 
 function normalizeHeader_(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function normalize_(value) {
-  return String(value || "").trim().toLowerCase();
 }
 
 function output(data) {

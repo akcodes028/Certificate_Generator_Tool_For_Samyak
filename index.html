@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SCC Certificate Generation Portal</title>
-  <link rel="stylesheet" href="style.css?v=20260626-batch-ui">
+  <link rel="stylesheet" href="style.css?v=20260701-live-grid">
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -17,7 +18,6 @@
       </div>
     </div>
     <div class="top-actions">
-      <button class="ghost-btn" type="button" onclick="clearSelection()">Clear</button>
       <button class="icon-btn" type="button" onclick="loadApprovedStudents()">Refresh</button>
     </div>
   </header>
@@ -26,20 +26,17 @@
     <section class="hero-panel reveal-card">
       <div>
         <p class="section-eyebrow">Owner Workspace</p>
-        <h2>Approve, select, preview, and generate certificates faster.</h2>
-        <p>Select up to 5 approved sheet rows at once. Review them in the preview slider, then generate all selected certificates together.</p>
+        <h2>Sheet records, certificate preview, and PNG download in one place.</h2>
+        <p>The portal reads rows from your Google Sheet and refreshes automatically, so sheet updates appear here in the grid.</p>
       </div>
-      <div class="hero-actions">
-        <button type="button" onclick="previewSelected()">Preview Selected</button>
-        <button class="accent-btn" type="button" onclick="generateSelected()">Generate Selected</button>
-      </div>
+      <div class="sync-chip" id="syncStatus">Syncing sheet...</div>
     </section>
 
     <section class="status-row reveal-card">
-      <div class="stat"><span id="totalCount">0</span><small>Approved</small></div>
+      <div class="stat"><span id="totalCount">0</span><small>Rows</small></div>
       <div class="stat"><span id="pendingCount">0</span><small>Ready</small></div>
       <div class="stat"><span id="doneCount">0</span><small>Generated</small></div>
-      <div class="stat selected-stat"><span id="selectedCount">0/5</span><small>Selected</small></div>
+      <div class="stat selected-stat"><span id="selectedCount">None</span><small>Selected</small></div>
     </section>
 
     <section class="controls-card reveal-card">
@@ -50,8 +47,8 @@
       <div class="controls-main compact">
         <label class="field-label" for="generatedFilter">Generated status</label>
         <select id="generatedFilter" onchange="renderGrid()">
+          <option value="all">All rows</option>
           <option value="pending">Not generated</option>
-          <option value="all">All approved</option>
           <option value="yes">Generated</option>
         </select>
       </div>
@@ -64,17 +61,6 @@
     </section>
 
     <div id="message" class="message" style="display:none;"></div>
-
-    <section class="selection-bar" id="selectionBar" style="display:none;">
-      <div>
-        <strong id="selectionTitle">0 selected</strong>
-        <span>Maximum 5 certificates per batch.</span>
-      </div>
-      <div class="selection-actions">
-        <button class="ghost-dark" type="button" onclick="previewSelected()">Preview</button>
-        <button type="button" onclick="generateSelected()">Generate Batch</button>
-      </div>
-    </section>
 
     <section class="grid-wrap reveal-card">
       <table class="student-table">
@@ -90,32 +76,30 @@
             <th>Review</th>
             <th>Certificate ID</th>
             <th>Generated</th>
-            <th>Action</th>
+            <th>Preview</th>
           </tr>
         </thead>
         <tbody id="studentGrid">
-          <tr><td colspan="11" class="empty">Loading approved records...</td></tr>
+          <tr><td colspan="11" class="empty">Loading sheet records...</td></tr>
         </tbody>
       </table>
     </section>
 
-    <section id="previewPanel" class="preview-panel" style="display:none;">
+    <section id="previewPanel" class="preview-panel" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
       <div class="preview-shell reveal-card">
         <div class="preview-header">
           <div>
             <p class="section-eyebrow">Preview Window</p>
             <h2 id="previewTitle">Certificate Preview</h2>
-            <p id="previewMeta">Use previous and next to review selected certificates.</p>
+            <p id="previewMeta">Selected sheet record</p>
           </div>
           <div class="preview-actions">
-            <button class="ghost-dark" type="button" onclick="previousPreview()">Prev</button>
-            <button class="ghost-dark" type="button" onclick="nextPreview()">Next</button>
-            <button class="accent-btn" type="button" onclick="printCertificate()">Print / Save PDF</button>
+            <button class="accent-btn" type="button" onclick="downloadCertificatePng()">Download PNG</button>
+            <button class="ghost-dark" type="button" onclick="closePreview()">Close</button>
           </div>
         </div>
 
         <div class="slider-frame">
-          <button class="nav-arrow left" type="button" onclick="previousPreview()" aria-label="Previous certificate">‹</button>
           <div class="certificate-stage">
             <article id="certificateEl" class="certificate">
               <div class="cert-top">
@@ -179,17 +163,13 @@
               </div>
             </article>
           </div>
-          <button class="nav-arrow right" type="button" onclick="nextPreview()" aria-label="Next certificate">›</button>
         </div>
-
-        <div id="previewDots" class="preview-dots"></div>
       </div>
     </section>
   </main>
 
-  <script src="script.js?v=20260626-batch-ui"></script>
+  <script src="script.js?v=20260701-live-grid"></script>
 </body>
 </html>
-
 
 

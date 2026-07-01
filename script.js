@@ -1,11 +1,10 @@
-﻿const API_ENDPOINT = "PASTE_YOUR_DEPLOYED_APPS_SCRIPT_WEB_APP_URL_HERE";
-const MAX_BATCH = 5;
+﻿const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbyTxMELKFJWz_1yI8Jk_MVfxM7rDVkjAejGJDf-TQs6ZiLIsxElR3gcQeSnjhisqWjFog/exec";
+const SYNC_INTERVAL_MS = 8000;
 
 let students = [];
-let selectedRows = [];
-let previewStudents = [];
-let previewIndex = 0;
+let selectedRow = null;
 let selectedStudent = null;
+let syncTimer = null;
 
 const DEMO_STUDENTS = [
   {
@@ -51,8 +50,14 @@ const DEMO_STUDENTS = [
     remarks: "Generated"
   }
 ];
+
 document.addEventListener("DOMContentLoaded", () => {
   loadApprovedStudents();
+  startLiveSync();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closePreview();
 });
 
 function showMessage(text, type = "") {
@@ -66,6 +71,13 @@ function showMessage(text, type = "") {
 function hideMessage() {
   const el = document.getElementById("message");
   if (el) el.style.display = "none";
+}
+
+function setSyncStatus(text, type = "") {
+  const el = document.getElementById("syncStatus");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `sync-chip ${type}`.trim();
 }
 
 function normalize(value) {
@@ -108,35 +120,94 @@ async function callApi(params) {
   return data;
 }
 
+function normalizeStudentList(data) {
+  if (Array.isArray(data?.students)) return data.students;
+  if (Array.isArray(data?.data)) return data.data.map(mapLooseStudent);
+  if (Array.isArray(data)) return data.map(mapLooseStudent);
+  return [];
+}
+
+function firstValue(source, keys) {
+  for (const key of keys) {
+    if (source?.[key] !== undefined && source[key] !== null && String(source[key]).trim() !== "") return source[key];
+  }
+  return "";
+}
+
+function mapLooseStudent(row, index) {
+  return {
+    rowNumber: Number(firstValue(row, ["rowNumber", "row", "Row"])) || index + 2,
+    name: firstValue(row, ["name", "Name", "Full Name", "Full Name "]),
+    email: firstValue(row, ["email", "Email", "Email ", "Email Address", "Email Address ", "Email address"]),
+    mobile: firstValue(row, ["mobile", "Mobile", "Mobile ", "Mobile Number", "Mobile Number "]),
+    course: firstValue(row, ["course", "Course", "Course ", "Course Name", "Course Name "]),
+    joiningDate: firstValue(row, ["joiningDate", "Joining Date", "Course Joining Date", "Course Joining Date "]),
+    endingDate: firstValue(row, ["endingDate", "Ending Date", "Course Completion Date", "Course Completion Date "]),
+    courseReview: firstValue(row, ["courseReview", "Course Review", "Course Review"]),
+    verificationStatus: firstValue(row, ["verificationStatus", "Verification Status"]),
+    certificateId: firstValue(row, ["certificateId", "Certificate ID"]),
+    generated: firstValue(row, ["generated", "Generated"]),
+    remarks: firstValue(row, ["remarks", "Remarks", "Any Feedback", "Any Feedback "])
+  };
+}
+
+async function fetchStudentData() {
+  const attempts = [{}, { action: "list" }, { action: "get" }, { action: "read" }];
+  let lastError = null;
+
+  for (const params of attempts) {
+    try {
+      return await callApi(params);
+    } catch (err) {
+      lastError = err;
+      if (!/invalid action/i.test(String(err.message || err))) break;
+    }
+  }
+
+  throw lastError || new Error("Could not load sheet data.");
+}
+
+function startLiveSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(loadApprovedStudents, SYNC_INTERVAL_MS);
+}
+
 async function loadApprovedStudents() {
-  hideMessage();
   const grid = document.getElementById("studentGrid");
-  if (grid) grid.innerHTML = '<tr><td colspan="11" class="empty">Loading approved records...</td></tr>';
+  if (grid && !students.length) grid.innerHTML = '<tr><td colspan="11" class="empty">Loading sheet records...</td></tr>';
 
   if (!hasEndpoint()) {
     students = DEMO_STUDENTS.map((student) => ({ ...student }));
+    selectedRow = selectedRow && students.some((student) => Number(student.rowNumber) === Number(selectedRow)) ? selectedRow : null;
     renderCourseFilter();
     renderGrid();
     updateSelectionUI();
-    showMessage("Demo mode is active. Paste your Apps Script Web App URL in script.js to load real sheet rows.");
+    setSyncStatus("Demo data", "warn");
+    showMessage("Demo mode is active. Paste your Apps Script Web App URL in script.js to load live sheet rows.");
     return;
   }
 
   try {
-    const data = await callApi({ action: "list" });
-    students = Array.isArray(data.students) ? data.students : [];
-    selectedRows = selectedRows.filter((row) => students.some((student) => Number(student.rowNumber) === Number(row)));
+    setSyncStatus("Syncing sheet...");
+    const data = await fetchStudentData();
+    students = normalizeStudentList(data);
+    selectedRow = selectedRow && students.some((student) => Number(student.rowNumber) === Number(selectedRow)) ? selectedRow : null;
+    selectedStudent = selectedRow ? prepareCertificateStudent(getStudentByRow(selectedRow)) : selectedStudent;
     renderCourseFilter();
     renderGrid();
     updateSelectionUI();
-    if (!students.length) showMessage("No approved records found in the verification sheet.");
+    if (selectedStudent && document.getElementById("previewPanel")?.style.display !== "none") renderCertificate(selectedStudent);
+    setSyncStatus(`Live sync: ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
+    if (!students.length) showMessage("No records found in the sheet.");
+    else hideMessage();
   } catch (err) {
-    students = DEMO_STUDENTS.map((student) => ({ ...student }));
-    selectedRows = [];
-    renderCourseFilter();
-    renderGrid();
-    updateSelectionUI();
-    showMessage(`Could not load sheet data, so demo rows are shown. ${err.message || ""}`, "error");
+    setSyncStatus("Sync failed", "error");
+    if (!students.length) {
+      students = DEMO_STUDENTS.map((student) => ({ ...student }));
+      renderCourseFilter();
+      renderGrid();
+    }
+    showMessage(`Could not load sheet data. ${err.message || ""}`, "error");
   }
 }
 
@@ -153,7 +224,7 @@ function renderCourseFilter() {
 
 function filteredStudents() {
   const q = normalize(document.getElementById("searchInput")?.value);
-  const generatedFilter = document.getElementById("generatedFilter")?.value || "pending";
+  const generatedFilter = document.getElementById("generatedFilter")?.value || "all";
   const courseFilter = document.getElementById("courseFilter")?.value || "all";
 
   return students.filter((student) => {
@@ -183,21 +254,20 @@ function renderGrid() {
 
   const visible = filteredStudents();
   if (!visible.length) {
-    grid.innerHTML = '<tr><td colspan="11" class="empty">No matching approved records.</td></tr>';
+    grid.innerHTML = '<tr><td colspan="11" class="empty">No matching sheet records.</td></tr>';
     return;
   }
 
   grid.innerHTML = visible.map((student) => {
     const rowNumber = Number(student.rowNumber);
     const isGenerated = normalize(student.generated) === "yes";
-    const isSelected = selectedRows.includes(rowNumber);
-    const generateLabel = isGenerated ? "Regenerate" : "Generate";
+    const isSelected = Number(selectedRow) === rowNumber;
 
     return `
       <tr class="${isSelected ? "is-selected" : ""}">
         <td class="select-col">
           <label class="check-wrap" title="Select this row">
-            <input type="checkbox" ${isSelected ? "checked" : ""} onchange="toggleRowSelection(${rowNumber}, this.checked)">
+            <input type="radio" name="selectedStudent" ${isSelected ? "checked" : ""} onchange="selectStudent(${rowNumber})">
           </label>
         </td>
         <td><strong>${escapeHtml(student.name)}</strong></td>
@@ -207,50 +277,21 @@ function renderGrid() {
         <td>${escapeHtml(formatDate(student.joiningDate))}</td>
         <td>${escapeHtml(formatDate(student.endingDate))}</td>
         <td>${escapeHtml(student.courseReview)}</td>
-        <td>${escapeHtml(student.certificateId || "-")}</td>
+        <td>${escapeHtml(student.certificateId || buildCertificateId(student))}</td>
         <td><span class="pill ${isGenerated ? "yes" : "no"}">${isGenerated ? "Yes" : "No"}</span></td>
         <td>
-          <div class="row-actions">
-            <button type="button" onclick="generateOne(${rowNumber})">${generateLabel}</button>
-            <button class="secondary" type="button" onclick="previewRows([${rowNumber}])">Preview</button>
-          </div>
+          <button type="button" onclick="selectStudent(${rowNumber})">Preview</button>
         </td>
       </tr>
     `;
   }).join("");
 }
 
-function toggleRowSelection(rowNumber, checked) {
-  rowNumber = Number(rowNumber);
-  if (checked) {
-    if (selectedRows.length >= MAX_BATCH && !selectedRows.includes(rowNumber)) {
-      showMessage(`You can select maximum ${MAX_BATCH} rows at once.`, "error");
-      renderGrid();
-      return;
-    }
-    if (!selectedRows.includes(rowNumber)) selectedRows.push(rowNumber);
-  } else {
-    selectedRows = selectedRows.filter((row) => row !== rowNumber);
-  }
-  updateSelectionUI();
-  renderGrid();
-}
-
-function clearSelection() {
-  selectedRows = [];
-  updateSelectionUI();
-  renderGrid();
-}
-
 function updateSelectionUI() {
-  const count = selectedRows.length;
   const countEl = document.getElementById("selectedCount");
-  const bar = document.getElementById("selectionBar");
-  const title = document.getElementById("selectionTitle");
-
-  if (countEl) countEl.textContent = `${count}/${MAX_BATCH}`;
-  if (title) title.textContent = `${count} selected`;
-  if (bar) bar.style.display = count ? "flex" : "none";
+  if (!countEl) return;
+  const student = selectedRow ? getStudentByRow(selectedRow) : null;
+  countEl.textContent = student?.name || "None";
 }
 
 function getStudentByRow(rowNumber) {
@@ -258,109 +299,42 @@ function getStudentByRow(rowNumber) {
 }
 
 function buildCertificateId(student) {
-  if (student.certificateId) return student.certificateId;
+  if (student?.certificateId) return student.certificateId;
   const year = new Date().getFullYear();
-  return `SAMYAK-${year}-${String(Number(student.rowNumber) - 1).padStart(4, "0")}`;
+  return `SAMYAK-${year}-${String(Number(student?.rowNumber || 1) - 1).padStart(4, "0")}`;
 }
 
-function previewSelected() {
-  if (!selectedRows.length) {
-    showMessage("Select at least one approved sheet row first.", "error");
+function prepareCertificateStudent(student) {
+  if (!student) return null;
+  return { ...student, certificateId: buildCertificateId(student) };
+}
+
+function selectStudent(rowNumber) {
+  const student = getStudentByRow(rowNumber);
+  if (!student) {
+    showMessage("This sheet row is no longer available.", "error");
     return;
   }
-  previewRows(selectedRows);
-}
 
-function previewRows(rowNumbers) {
-  previewStudents = rowNumbers
-    .slice(0, MAX_BATCH)
-    .map(getStudentByRow)
-    .filter(Boolean)
-    .map((student) => ({ ...student, certificateId: buildCertificateId(student) }));
-
-  if (!previewStudents.length) return;
-  previewIndex = 0;
-  showPreviewAt(previewIndex);
-  document.getElementById("previewPanel").style.display = "block";
-  document.getElementById("previewPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function showPreviewAt(index) {
-  if (!previewStudents.length) return;
-  previewIndex = (index + previewStudents.length) % previewStudents.length;
-  selectedStudent = previewStudents[previewIndex];
+  selectedRow = Number(rowNumber);
+  selectedStudent = prepareCertificateStudent(student);
+  renderGrid();
   renderCertificate(selectedStudent);
-  renderPreviewDots();
+  openPreview();
 }
 
-function previousPreview() {
-  showPreviewAt(previewIndex - 1);
+function openPreview() {
+  const panel = document.getElementById("previewPanel");
+  if (!panel) return;
+  panel.style.display = "grid";
+  document.body.classList.add("modal-open");
 }
 
-function nextPreview() {
-  showPreviewAt(previewIndex + 1);
-}
-
-function renderPreviewDots() {
-  const dots = document.getElementById("previewDots");
-  const meta = document.getElementById("previewMeta");
-  if (!dots) return;
-
-  dots.innerHTML = previewStudents.map((student, index) => (
-    `<button class="preview-dot ${index === previewIndex ? "active" : ""}" type="button" onclick="showPreviewAt(${index})" title="${escapeHtml(student.name)}"></button>`
-  )).join("");
-
-  if (meta) meta.textContent = `Certificate ${previewIndex + 1} of ${previewStudents.length}`;
-}
-
-async function generateOne(rowNumber) {
-  selectedRows = [Number(rowNumber)];
-  updateSelectionUI();
-  await generateSelected();
-}
-
-async function generateSelected() {
-  if (!selectedRows.length) {
-    showMessage("Select at least one row to generate certificates.", "error");
-    return;
-  }
-  if (selectedRows.length > MAX_BATCH) {
-    showMessage(`Maximum ${MAX_BATCH} certificates can be generated at once.`, "error");
-    return;
-  }
-
-  previewRows(selectedRows);
-
-  if (!hasEndpoint()) {
-    students = students.map((student) => {
-      if (!selectedRows.includes(Number(student.rowNumber))) return student;
-      return {
-        ...student,
-        certificateId: buildCertificateId(student),
-        generated: "Yes"
-      };
-    });
-    showMessage("Demo certificates generated locally. Connect Apps Script to update Google Sheet rows.", "ok");
-    renderGrid();
-    previewRows(selectedRows);
-    return;
-  }
-
-  showMessage("Generating selected certificates and updating sheet...", "");
-
-  try {
-    const data = await callApi({ action: "generateBatch", rows: selectedRows.join(",") });
-    const updatedStudents = Array.isArray(data.students) ? data.students : [];
-    showMessage(`${updatedStudents.length} certificate(s) generated and sheet updated.`, "ok");
-    await loadApprovedStudents();
-    const generatedRows = updatedStudents.map((student) => Number(student.rowNumber));
-    selectedRows = generatedRows.slice(0, MAX_BATCH);
-    updateSelectionUI();
-    renderGrid();
-    previewRows(selectedRows);
-  } catch (err) {
-    showMessage(err.message || "Batch generation failed.", "error");
-  }
+function closePreview() {
+  const panel = document.getElementById("previewPanel");
+  if (!panel) return;
+  panel.style.display = "none";
+  document.body.classList.remove("modal-open");
 }
 
 function renderCertificate(student) {
@@ -376,6 +350,7 @@ function renderCertificate(student) {
   }
 
   document.getElementById("previewTitle").textContent = `${student.name} - ${course}`;
+  document.getElementById("previewMeta").textContent = `Sheet row ${student.rowNumber}`;
   document.getElementById("certCourseHeading").textContent = `${course.toUpperCase()} COURSE COMPLETION - 2026`;
   document.getElementById("certName").textContent = student.name || "Student Name";
   document.getElementById("certCourseMark").textContent = course;
@@ -387,54 +362,35 @@ function renderCertificate(student) {
   document.getElementById("certId").textContent = certId;
 }
 
-function certificateHtmlForPrint() {
-  const certificate = document.getElementById("certificateEl");
-  const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-    .map((node) => node.outerHTML)
-    .join("\n");
-
-  if (!certificate) return "";
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Certificate Print</title>
-  ${styles}
-  <style>
-    body { margin: 0; background: #fff; }
-    .print-wrap { padding: 0; }
-    .certificate { width: 1120px; max-width: 100%; margin: 0 auto; box-shadow: none !important; }
-    @page { size: A4 landscape; margin: 6mm; }
-    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-  </style>
-</head>
-<body>
-  <div class="print-wrap">${certificate.outerHTML}</div>
-  <script>
-    window.onload = function () {
-      setTimeout(function () { window.print(); }, 250);
-    };
-  <\/script>
-</body>
-</html>`;
-}
-
-function printCertificate() {
+async function downloadCertificatePng() {
   if (!selectedStudent) {
-    showMessage("Preview or generate a certificate first.", "error");
+    showMessage("Select a sheet row to preview first.", "error");
     return;
   }
 
-  const printWindow = window.open("", "_blank", "width=1200,height=850");
-  if (!printWindow) {
-    showMessage("Popup blocked. Please allow popups, then try again.", "error");
+  const certificate = document.getElementById("certificateEl");
+  if (!certificate) return;
+  if (typeof html2canvas !== "function") {
+    showMessage("PNG exporter is still loading. Please try again in a moment.", "error");
     return;
   }
 
-  printWindow.document.open();
-  printWindow.document.write(certificateHtmlForPrint());
-  printWindow.document.close();
+  try {
+    const canvas = await html2canvas(certificate, {
+      backgroundColor: "#fffdf8",
+      scale: 2,
+      useCORS: true
+    });
+    const link = document.createElement("a");
+    const safeName = String(selectedStudent.name || "certificate").trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+    link.download = `${safeName || "certificate"}-${buildCertificateId(selectedStudent)}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    showMessage(`Could not download PNG. ${err.message || ""}`, "error");
+  }
 }
+
+
 
 
