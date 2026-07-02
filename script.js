@@ -1,10 +1,64 @@
 ﻿const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbyTxMELKFJWz_1yI8Jk_MVfxM7rDVkjAejGJDf-TQs6ZiLIsxElR3gcQeSnjhisqWjFog/exec";
 const SYNC_INTERVAL_MS = 8000;
 
+const STANDARD_COURSES = [
+  "MS Office",
+  "C",
+  "C++",
+  "C/C++",
+  "Python",
+  "Advanced Python",
+  "DSA With C",
+  "DSA With C++",
+  "DSA With Python",
+  "Python / Advanced Python / DSA",
+  "Digital Marketing",
+  "Power BI",
+  "SQL",
+  "Ethical Hacking",
+  "Basic + Advanced Excel",
+  "Tally Prime With GST",
+  "Spoken English",
+  "Spoken English With Personality Development",
+  "Personality Development",
+  "Basic Computer"
+];
 let students = [];
 let selectedRow = null;
 let selectedStudent = null;
+let selectedTemplate = "auto";
 let syncTimer = null;
+
+const CERTIFICATE_TEMPLATES = {
+  auto: {
+    className: "template-professional",
+    previewScale: 0.86,
+    heading: "COURSE COMPLETION - 2026",
+    copy1: "has successfully completed a <mark id=\"certCourseMark\">{{course}}</mark> live project based internship with training conducted by Samyak Computer Classes (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.",
+    copy2: "The course started on <mark id=\"certJoining\">{{joining}}</mark> and completed on <mark id=\"certEnding\">{{ending}}</mark>. The student has demonstrated <mark id=\"certReview\">{{review}}</mark>, project discipline, and career-ready understanding throughout the training program."
+  },
+  standard: {
+    className: "template-professional",
+    previewScale: 0.86,
+    heading: "COURSE COMPLETION - 2026",
+    copy1: "has successfully completed a <mark id=\"certCourseMark\">{{course}}</mark> live project based internship with training conducted by Samyak Computer Classes (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.",
+    copy2: "The course started on <mark id=\"certJoining\">{{joining}}</mark> and completed on <mark id=\"certEnding\">{{ending}}</mark>. The student has demonstrated <mark id=\"certReview\">{{review}}</mark>, project discipline, and career-ready understanding throughout the training program."
+  },
+  classic: {
+    className: "template-classic",
+    previewScale: 0.84,
+    heading: "CERTIFICATE COMPLETION - 2026",
+    copy1: "has successfully completed a <mark id=\"certCourseMark\">{{course}}</mark> live project based internship with training conducted by Samyak Computer Classes (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.",
+    copy2: "The course started on <mark id=\"certJoining\">{{joining}}</mark> and completed on <mark id=\"certEnding\">{{ending}}</mark>. The student has demonstrated <mark id=\"certReview\">{{review}}</mark>, project discipline, and career-ready understanding throughout the training program."
+  },
+  modern: {
+    className: "template-modern",
+    previewScale: 0.92,
+    heading: "COURSE COMPLETION - 2026",
+    copy1: "is hereby certified for successfully completing a <mark id=\"certCourseMark\">{{course}}</mark> live project based internship with training conducted by Samyak Computer Classes (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.",
+    copy2: "The course started on <mark id=\"certJoining\">{{joining}}</mark> and completed on <mark id=\"certEnding\">{{ending}}</mark>. The student has demonstrated <mark id=\"certReview\">{{review}}</mark>, strong project discipline, and career-ready understanding throughout the training program."
+  }
+};
 
 const DEMO_STUDENTS = [
   {
@@ -169,7 +223,9 @@ async function fetchStudentData() {
 
 function startLiveSync() {
   if (syncTimer) clearInterval(syncTimer);
-  syncTimer = setInterval(loadApprovedStudents, SYNC_INTERVAL_MS);
+  syncTimer = setInterval(() => {
+    if (!isPreviewOpen()) loadApprovedStudents();
+  }, SYNC_INTERVAL_MS);
 }
 
 async function loadApprovedStudents() {
@@ -192,11 +248,10 @@ async function loadApprovedStudents() {
     const data = await fetchStudentData();
     students = normalizeStudentList(data);
     selectedRow = selectedRow && students.some((student) => Number(student.rowNumber) === Number(selectedRow)) ? selectedRow : null;
-    selectedStudent = selectedRow ? prepareCertificateStudent(getStudentByRow(selectedRow)) : selectedStudent;
+    selectedStudent = selectedRow ? selectedStudent || prepareCertificateStudent(getStudentByRow(selectedRow)) : selectedStudent;
     renderCourseFilter();
     renderGrid();
     updateSelectionUI();
-    if (selectedStudent && document.getElementById("previewPanel")?.style.display !== "none") renderCertificate(selectedStudent);
     setSyncStatus(`Live sync: ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`, "ok");
     if (!students.length) showMessage("No records found in the sheet.");
     else hideMessage();
@@ -215,11 +270,12 @@ function renderCourseFilter() {
   const select = document.getElementById("courseFilter");
   if (!select) return;
   const current = select.value || "all";
-  const courses = [...new Set(students.map((student) => String(student.course || "").trim()).filter(Boolean))].sort();
+  const sheetCourses = students.map((student) => String(student.course || "").trim()).filter(Boolean);
+  const courses = [...new Set([...STANDARD_COURSES, ...sheetCourses])];
   select.innerHTML = '<option value="all">All courses</option>' + courses.map((course) => (
     `<option value="${escapeHtml(course)}">${escapeHtml(course)}</option>`
   )).join("");
-  select.value = courses.includes(current) ? current : "all";
+  select.value = courses.includes(current) || current === "all" ? current : "all";
 }
 
 function filteredStudents() {
@@ -233,7 +289,7 @@ function filteredStudents() {
       generatedFilter === "all" ||
       (generatedFilter === "yes" && generated) ||
       (generatedFilter === "pending" && !generated);
-    const matchesCourse = courseFilter === "all" || String(student.course || "") === courseFilter;
+    const matchesCourse = courseFilter === "all" || normalize(student.course) === normalize(courseFilter);
     const haystack = normalize([student.name, student.email, student.mobile, student.course, student.certificateId].join(" "));
     return matchesGenerated && matchesCourse && (!q || haystack.includes(q));
   });
@@ -323,6 +379,27 @@ function selectStudent(rowNumber) {
   openPreview();
 }
 
+function setCertificateTemplate() {
+  const select = document.getElementById("templateSelect");
+  selectedTemplate = select?.value || "auto";
+  if (selectedStudent) renderCertificate(selectedStudent);
+}
+
+function getTemplateForCourse(course) {
+  const normalized = String(course || "").trim().toLowerCase();
+  if (/python|web|digital|sql|power|marketing|excel|english/.test(normalized)) {
+    return CERTIFICATE_TEMPLATES.modern;
+  }
+  if (/c\+\+|c\/c\+\+|c\b|dsa|tally|gst|computer/.test(normalized)) {
+    return CERTIFICATE_TEMPLATES.classic;
+  }
+  return CERTIFICATE_TEMPLATES.standard;
+}
+
+function isPreviewOpen() {
+  return document.getElementById("previewPanel")?.style.display !== "none";
+}
+
 function openPreview() {
   const panel = document.getElementById("previewPanel");
   if (!panel) return;
@@ -335,6 +412,7 @@ function closePreview() {
   if (!panel) return;
   panel.style.display = "none";
   document.body.classList.remove("modal-open");
+  loadApprovedStudents();
 }
 
 function renderCertificate(student) {
@@ -342,25 +420,30 @@ function renderCertificate(student) {
   const course = student.course || "Course";
   const review = student.courseReview || "excellent practical learning";
   const certificate = document.getElementById("certificateEl");
+  const template = CERTIFICATE_TEMPLATES[selectedTemplate] || CERTIFICATE_TEMPLATES.standard;
 
   if (certificate) {
+    certificate.className = `certificate ${template.className}`;
     certificate.style.animation = "none";
     certificate.offsetHeight;
     certificate.style.animation = "certSwap 260ms ease both";
+    certificate.style.transform = `scale(${template.previewScale})`;
   }
 
   document.getElementById("previewTitle").textContent = `${student.name} - ${course}`;
   document.getElementById("previewMeta").textContent = `Sheet row ${student.rowNumber}`;
-  document.getElementById("certCourseHeading").textContent = `${course.toUpperCase()} COURSE COMPLETION - 2026`;
+  document.getElementById("certCourseHeading").textContent = `${course.toUpperCase()} ${template.heading}`;
   document.getElementById("certName").textContent = student.name || "Student Name";
-  document.getElementById("certCourseMark").textContent = course;
-  document.getElementById("certJoining").textContent = formatDate(student.joiningDate) || "--";
-  document.getElementById("certEnding").textContent = formatDate(student.endingDate) || "--";
+  document.getElementById("certCopy1").innerHTML = template.copy1.replace("{{course}}", escapeHtml(course));
+  document.getElementById("certCopy2").innerHTML = template.copy2
+    .replace("{{joining}}", escapeHtml(formatDate(student.joiningDate) || "--"))
+    .replace("{{ending}}", escapeHtml(formatDate(student.endingDate) || "--"))
+    .replace("{{review}}", escapeHtml(review));
   document.getElementById("certReview").textContent = review;
-  document.getElementById("certVerificationNo").textContent = `VN-${certId}`;
   document.getElementById("certIssued").textContent = todayText();
   document.getElementById("certId").textContent = certId;
 }
+
 
 async function downloadCertificatePng() {
   if (!selectedStudent) {
@@ -376,21 +459,34 @@ async function downloadCertificatePng() {
   }
 
   try {
-    const canvas = await html2canvas(certificate, {
+    if (document.fonts?.ready) await document.fonts.ready;
+    const exportHost = document.createElement("div");
+    exportHost.className = "export-host";
+    const exportCertificate = certificate.cloneNode(true);
+    exportCertificate.id = "certificateExportEl";
+    exportCertificate.classList.add("exporting", "export-clean");
+    exportHost.appendChild(exportCertificate);
+    document.body.appendChild(exportHost);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const canvas = await html2canvas(exportCertificate, {
       backgroundColor: "#fffdf8",
-      scale: 2,
-      useCORS: true
+      scale: 1,
+      width: 3508,
+      height: 2480,
+      windowWidth: 3600,
+      windowHeight: 2550,
+      useCORS: true,
+      logging: false
     });
     const link = document.createElement("a");
     const safeName = String(selectedStudent.name || "certificate").trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
-    link.download = `${safeName || "certificate"}-${buildCertificateId(selectedStudent)}.png`;
-    link.href = canvas.toDataURL("image/png");
+    link.download = `${safeName || "certificate"}-${buildCertificateId(selectedStudent)}.jpg`;
+    link.href = canvas.toDataURL("image/jpeg", 0.98);
     link.click();
   } catch (err) {
-    showMessage(`Could not download PNG. ${err.message || ""}`, "error");
+    showMessage(`Could not download certificate image. ${err.message || ""}`, "error");
+  } finally {
+    document.querySelector(".export-host")?.remove();
   }
 }
-
-
-
-

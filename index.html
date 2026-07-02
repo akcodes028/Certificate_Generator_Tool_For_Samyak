@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SCC Certificate Generation Portal</title>
-  <link rel="stylesheet" href="style.css?v=20260701-live-grid">
+  <link rel="stylesheet" href="style.css?v=20260702-template-fit">
   <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
@@ -18,6 +18,15 @@
       </div>
     </div>
     <div class="top-actions">
+      <div class="template-select-wrap">
+        <label for="templateSelect">Template</label>
+        <select id="templateSelect" onchange="setCertificateTemplate()">
+          <option value="auto">Auto match</option>
+          <option value="standard">Standard</option>
+          <option value="classic">Classic</option>
+          <option value="modern">Modern</option>
+        </select>
+      </div>
       <button class="icon-btn" type="button" onclick="loadApprovedStudents()">Refresh</button>
     </div>
   </header>
@@ -94,14 +103,14 @@
             <p id="previewMeta">Selected sheet record</p>
           </div>
           <div class="preview-actions">
-            <button class="accent-btn" type="button" onclick="downloadCertificatePng()">Download PNG</button>
+            <button class="accent-btn" type="button" onclick="downloadCertificatePng()">Download JPG</button>
             <button class="ghost-dark" type="button" onclick="closePreview()">Close</button>
           </div>
         </div>
 
         <div class="slider-frame">
           <div class="certificate-stage">
-            <article id="certificateEl" class="certificate">
+            <article id="certificateEl" class="certificate template-professional">
               <div class="cert-top">
                 <div class="cert-brand">
                   <img src="image.png" alt="SCC Logo" onerror="this.style.display='none'">
@@ -124,14 +133,14 @@
                 <h3 id="certCourseHeading">COURSE COMPLETION - 2026</h3>
                 <p class="italic">This is to proudly certify that</p>
                 <h1 id="certName">Student Name</h1>
-                <p class="cert-copy">
+                <p class="cert-copy" id="certCopy1">
                   has successfully completed a <mark>live project based internship with training</mark>
                   in <mark id="certCourseMark">Course</mark> conducted by Samyak Computer Classes
                   (Authorized Franchisee - Osian Enterprise), Manjalpur Branch, Vadodara.
                   Their joining date is <mark id="certJoining">--</mark> and ending date is
                   <mark id="certEnding">--</mark>.
                 </p>
-                <p class="cert-copy">
+                <p class="cert-copy" id="certCopy2">
                   The student has demonstrated <mark id="certReview">excellent practical learning</mark>,
                   project discipline, and career-ready understanding throughout the training program.
                 </p>
@@ -141,10 +150,7 @@
 
               <div class="cert-footer">
                 <div>
-                  <h4>VERIFICATION DETAILS</h4>
-                  <p>Verification No: <span id="certVerificationNo">--</span></p>
-                  <p>Email: info@osian.tech</p>
-                  <p>Phone: 7383021062, 9601257564</p>
+                  <h4>CERTIFICATE DETAILS</h4>
                   <p>Issued: <span id="certIssued">--</span></p>
                   <p>Certificate ID: <span id="certId">--</span></p>
                 </div>
@@ -168,7 +174,7 @@
     </section>
   </main>
 
-  <script src="script.js?v=20260701-live-grid"></script>
+  <script src="script.js?v=20260702-template-fit"></script>
 </body>
 </html>
 
